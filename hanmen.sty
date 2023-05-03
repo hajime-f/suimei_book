@@ -1,0 +1,468 @@
+%
+% hanmen.sty
+%
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{hanmen}[2022/06/09 v0.9.7]
+\RequirePackage{xkeyval,calc,xcolor,iftex}
+
+%% 文字サイズ指定用単位定義
+\newdimen\bQ
+\newdimen\bbp
+\setlength\bQ{.270361754mm}% 0.25/0.924687 = 0.270361754
+\setlength\bbp{1.08144702bp}% 1/0.924687
+\let\hnmn@Qunit=\bQ
+\newdimen\hnmn@Hunit
+\setlength\hnmn@Hunit{.25mm}% 0.25mm = 1H
+\ifluatex\else\def\zw{zw}\fi
+
+%% QHWL
+\newdimen\hnmn@Q
+\newdimen\hnmn@H
+\newdimen\hnmn@W
+\newcount\hnmn@L
+
+%% 条件分岐
+\newif\ifhnmn@tate \hnmn@tatefalse % 縦組み時条件分岐
+\newif\ifhnmn@@tate \hnmn@@tatefalse % 縦組み時条件分岐（PDF全体が縦かどうか）
+\newif\ifhnmn@pass \hnmn@passfalse % 版面を再定義するかどうかの条件分岐
+\newif\ifhnmn@dev \hnmn@devfalse % 開発オプション
+
+%% options
+\DeclareOptionX{tate}{%
+    \AtBeginDocument{\tate\message{《縦組モード》}\adjustbaseline}\hnmn@tatetrue\hnmn@@tatetrue
+}
+\DeclareOptionX{pass}{\hnmn@passtrue}
+\DeclareOptionX{adjustfontsize}{\relax}
+\DeclareOptionX{develop}{\hnmn@devtrue}
+\DeclareOptionX{Q}{\setlength\hnmn@Q{#1 pt}}
+\DeclareOptionX{H}{\setlength\hnmn@H{#1 pt}}
+\DeclareOptionX{W}{\setlength\hnmn@W{#1 pt}}
+\DeclareOptionX{L}{\hnmn@L=#1}
+\DeclareOptionX{ko}{\def\hnmn@koguchiyose{#1}}
+\DeclareOptionX{te}{\def\hnmn@tenyose{#1}}
+\DeclareOptionX{ten}{\def\hnmn@ten{#1}}
+\DeclareOptionX{chi}{\def\hnmn@chi{#1}}
+\DeclareOptionX{nodo}{\def\hnmn@nodo{#1}}
+\DeclareOptionX{koguchi}{\def\hnmn@koguchi{#1}}
+\DeclareOptionX{addten}{\def\hnmn@addten{#1}}
+\DeclareOptionX{addchi}{\def\hnmn@addchi{#1}}
+\DeclareOptionX{addnodo}{\def\hnmn@addnodo{#1}}
+\DeclareOptionX{addkoguchi}{\def\hnmn@addkoguchi{#1}}
+\DeclareOptionX{headheight}{\setlength\headheight{#1}}
+\DeclareOptionX{headsep}{\setlength\headsep{#1}}
+\DeclareOptionX{footskip}{\setlength\footskip{#1}}
+\DeclareOptionX{ptj}{\let\hnmn@Qunit=\bbp \setlength\hnmn@Hunit{1bp}}
+\DeclareOptionX{pt}{\setlength\hnmn@Qunit{1pt}\setlength\hnmn@Hunit{1pt}}
+\DeclareOptionX{jisfontzoom}{% MIN10/JIS/OTF用サイズ調整
+    \setlength\bQ{.2598169226mm}%% 0.25/0.962216 = 0.2598169226
+    \setlength\bbp{1.03926769bp}%% 1/0.962216
+}
+\newcounter{hnmn@gridnumber}
+\setcounter{hnmn@gridnumber}{0}
+\DeclareOptionX{g}{\setcounter{hnmn@gridnumber}{#1}\stepcounter{hnmn@gridnumber}}
+
+\ExecuteOptionsX{Q=11.5,H=19,W=42,L=17,ten=\relax,chi=\relax,nodo=\relax,koguchi=\relax,addten=0mm,addchi=0mm,addnodo=0mm,addkoguchi=0mm,headheight=10mm,headsep=5mm,footskip=5mm,ko=0mm,te=0mm}
+\ProcessOptionsX
+
+%% \hnmn@relax
+\def\hnmn@relax{\relax}
+
+%% 競合するオプションが同時指定された場合にエラーを出すためのマクロ定義
+\def\hnmn@conflict@error{%
+    \ifx\hnmn@ten\hnmn@relax\else
+        \ifx\hnmn@chi\hnmn@relax\else
+            \PackageError{hanmen}{tenとchiは併用できません}{}\fi\fi
+    \ifx\hnmn@nodo\hnmn@relax\else
+        \ifx\hnmn@koguchi\hnmn@relax\else
+            \PackageError{hanmen}{nodoとkoguchiは併用できません}{}\fi\fi
+}
+
+%% 版面設定用マクロ
+%%%% 基本マクロ
+\def\hnmn@set@QHWL{%
+    % 文字サイズ
+    \def\normalsize{%
+        \@setfontsize\normalsize{\strip@pt\hnmn@Q\hnmn@Qunit}{\strip@pt\hnmn@H\hnmn@Hunit}%
+    }%
+    \normalsize
+    % 字数と行数
+    \textwidth=\strip@pt\hnmn@W\zw
+    \textheight=\dimexpr\hnmn@L\baselineskip-\baselineskip+1\zw\relax
+}
+\def\hnmn@set@hanmen{%
+    % エラー判定
+    \hnmn@conflict@error
+    % 版面を中央に（上下）
+    \ifx\hnmn@ten\hnmn@relax
+        \topmargin=\paperheight
+        \advance\topmargin by \ifhnmn@tate -\textwidth\else -\textheight\fi
+        \ifx\hnmn@chi\hnmn@relax
+            \divide\topmargin by 2\else
+            \advance\topmargin by -\hnmn@chi\fi
+    \else
+        \topmargin=\hnmn@ten
+    \fi
+    \topmargin=\dimexpr\topmargin-1in-\headheight-\headsep-\hnmn@tenyose+\hnmn@addten-\hnmn@addchi\relax
+    % 版面を中央に（左右）
+    \def\hnmn@text@yoko@haba{\ifhnmn@tate\textheight\else\textwidth\fi}%
+    % .. 奇数ページのサイドマージン
+    \ifx\hnmn@nodo\hnmn@relax
+        \ifx\hnmn@koguchi\hnmn@relax
+            \oddsidemargin=\dimexpr(\paperwidth-\hnmn@text@yoko@haba)/2\relax
+        \else
+            \ifhnmn@@tate
+                \oddsidemargin=\hnmn@koguchi
+            \else
+                \oddsidemargin=\dimexpr\paperwidth-\hnmn@text@yoko@haba-\hnmn@koguchi\relax
+            \fi
+        \fi
+    \else
+        \ifhnmn@@tate
+            \oddsidemargin=\dimexpr\paperwidth-\hnmn@text@yoko@haba-\hnmn@nodo\relax
+        \else
+            \oddsidemargin=\hnmn@nodo
+        \fi
+    \fi
+    \ifhnmn@@tate
+        \oddsidemargin=\dimexpr\oddsidemargin-1in-\hnmn@koguchiyose-\hnmn@addnodo+\hnmn@addkoguchi\relax
+    \else
+        \oddsidemargin=\dimexpr\oddsidemargin-1in+\hnmn@koguchiyose+\hnmn@addnodo-\hnmn@addkoguchi\relax
+    \fi
+    % .. 偶数ページのサイドマージン
+    \ifx\hnmn@nodo\hnmn@relax
+        \ifx\hnmn@koguchi\hnmn@relax
+            \evensidemargin=\dimexpr(\paperwidth-\hnmn@text@yoko@haba)/2\relax
+        \else
+            \ifhnmn@@tate
+                \evensidemargin=\dimexpr\paperwidth-\hnmn@text@yoko@haba-\hnmn@koguchi\relax
+            \else
+                \evensidemargin=\hnmn@koguchi
+            \fi
+        \fi
+    \else
+        \ifhnmn@@tate
+            \evensidemargin=\hnmn@nodo
+        \else
+            \evensidemargin=\dimexpr\paperwidth-\hnmn@text@yoko@haba-\hnmn@nodo\relax
+        \fi
+    \fi
+    \ifhnmn@@tate
+        \evensidemargin=\dimexpr\evensidemargin-1in+\hnmn@koguchiyose+\hnmn@addnodo-\hnmn@addkoguchi\relax
+    \else
+        \evensidemargin=\dimexpr\evensidemargin-1in-\hnmn@koguchiyose-\hnmn@addnodo+\hnmn@addkoguchi\relax
+    \fi
+    % TeXは版面の上端から \topskip だけ下がった所に1行目のベースラインを置く
+    % 和文ベースラインの位置は、縦書き時は中央、横書き時は88:12の場所にくる
+    \ifhnmn@tate\topskip=.5\zw\else\topskip=.88\zw\fi
+}
+%%%% フォントサイズ簡易調整
+\def\tiny{\@setfontsize\tiny{\strip@pt\dimexpr 5\hnmn@Q/10\relax\hnmn@Qunit}{\strip@pt\dimexpr 5\hnmn@H/10\relax\hnmn@Hunit}}%
+\def\scriptsize{\@setfontsize\scriptsize{\strip@pt\dimexpr 7\hnmn@Q/10\relax\hnmn@Qunit}{\strip@pt\dimexpr 7\hnmn@H/10\relax\hnmn@Hunit}}%
+\def\footnotesize{\@setfontsize\footnotesize{\strip@pt\dimexpr 8\hnmn@Q/10\relax\hnmn@Qunit}{\strip@pt\dimexpr 8\hnmn@H/10\relax\hnmn@Hunit}}%
+\def\small{\@setfontsize\small{\strip@pt\dimexpr 9\hnmn@Q/10\relax\hnmn@Qunit}{\strip@pt\dimexpr 9\hnmn@H/10\relax\hnmn@Hunit}}%
+\def\large{\@setfontsize\large{\strip@pt\dimexpr 12\hnmn@Q/10\relax\hnmn@Qunit}{\strip@pt\dimexpr 12\hnmn@H/10\relax\hnmn@Hunit}}%
+\def\Large{\@setfontsize\Large{\strip@pt\dimexpr 1.44\hnmn@Q\relax\hnmn@Qunit}{\strip@pt\dimexpr 1.44\hnmn@H\relax\hnmn@Hunit}}%
+\def\LARGE{\@setfontsize\LARGE{\strip@pt\dimexpr 1.728\hnmn@Q\relax\hnmn@Qunit}{\strip@pt\dimexpr 1.728\hnmn@H\relax\hnmn@Hunit}}%
+\def\huge{\@setfontsize\huge{\strip@pt\dimexpr 2.074\hnmn@Q\relax\hnmn@Qunit}{\strip@pt\dimexpr 2.074\hnmn@H\relax\hnmn@Hunit}}%
+\def\Huge{\@setfontsize\Huge{\strip@pt\dimexpr 2.488\hnmn@Q\relax\hnmn@Qunit}{\strip@pt\dimexpr 2.488\hnmn@H\relax\hnmn@Hunit}}%
+\def\HUGE{\@setfontsize\HUGE{\strip@pt\dimexpr 3\hnmn@Q\relax\hnmn@Qunit}{\strip@pt\dimexpr 3\hnmn@H\relax\hnmn@Hunit}}
+
+%%%% 版面設定を実行
+\ifhnmn@pass\else
+    \hnmn@set@QHWL
+    \hnmn@set@hanmen
+\fi
+
+%% 開発用マクロ
+\newif\ifhnmn@c@tate
+\ifhnmn@dev
+%%%% \showhanmen
+\RequirePackage{lengthconvert}
+\Convertsetup{mm}
+\newdimen\hnmn@t@ten
+\newdimen\hnmn@t@chi
+\newdimen\hnmn@t@nodo
+\newdimen\hnmn@t@koguchi
+\newdimen\hnmn@marginbottom
+\newcommand{\showhanmen}{%
+    \def\hnmn@text@yoko@haba{\ifhnmn@tate\textheight\else\textwidth\fi}%
+    \def\hnmn@text@tate@haba{\ifhnmn@tate\textwidth\else\textheight\fi}%
+    Q = \strip@pt\hnmn@Q\,Q\par
+    H = \strip@pt\hnmn@H\,H\par
+    W = \strip@pt\hnmn@W\,zw\par
+    L = \the\hnmn@L\,lines\par
+    \ifx\hnmn@ten\hnmn@relax
+        \hnmn@t@ten=\paperheight
+        \advance\hnmn@t@ten-\ifhnmn@tate\textwidth\else\textheight\fi
+        \ifx\hnmn@chi\hnmn@relax
+            \divide\hnmn@t@ten 2
+            \hnmn@t@chi=\hnmn@t@ten
+        \else
+            \hnmn@t@chi=\hnmn@chi
+            \advance\hnmn@t@ten-\hnmn@chi
+        \fi
+    \else
+        \hnmn@t@ten=\hnmn@ten
+        \hnmn@t@chi=\dimexpr\paperheight-\hnmn@text@tate@haba-\hnmn@ten\relax
+    \fi
+    \hnmn@t@ten=\dimexpr\hnmn@t@ten+\hnmn@addten-\hnmn@addchi\relax
+    \hnmn@t@chi=\dimexpr\hnmn@t@chi+\hnmn@addchi-\hnmn@addten\relax
+    ten = \Convert{\hnmn@t@ten}\par
+    chi = \Convert{\hnmn@t@chi}\par
+    \hnmn@t@nodo=\paperwidth
+    \ifx\hnmn@nodo\hnmn@relax
+        \ifx\hnmn@koguchi\hnmn@relax
+            \hnmn@t@nodo=\dimexpr(\hnmn@t@nodo-\hnmn@text@yoko@haba)/2\relax
+            \hnmn@t@koguchi=\hnmn@t@nodo
+        \else
+            \hnmn@t@koguchi=\hnmn@koguchi
+            \hnmn@t@nodo=\dimexpr\hnmn@t@nodo-\hnmn@text@yoko@haba-\hnmn@koguchi\relax
+        \fi
+    \else
+        \hnmn@t@koguchi=\dimexpr\hnmn@t@nodo-\hnmn@text@yoko@haba-\hnmn@nodo\relax
+        \hnmn@t@nodo=\hnmn@nodo
+    \fi
+    nodo = \Convert{\hnmn@t@nodo}\par
+    koguchi = \Convert{\hnmn@t@koguchi}\par
+    footskip = \Convert{\footskip}\par
+    headheight = \Convert{\headheight}\par
+    headsep = \Convert{\headsep}\par
+    \hnmn@marginbottom=\dimexpr\paperheight-\hnmn@t@ten-\hnmn@text@tate@haba-\footskip\relax
+    margin-bottom = \Convert{\hnmn@marginbottom}\par
+}
+%%%% \calchanmen
+\newdimen\hnmn@t@Q
+\newdimen\hnmn@t@H
+\newdimen\hnmn@t@W
+\newcount\hnmn@t@L
+\define@key{hnmn@calc}{tate}[true]{\hnmn@c@tatetrue}
+\define@key{hnmn@calc}{Q}{\setlength\hnmn@t@Q{#1 pt}}
+\define@key{hnmn@calc}{H}{\setlength\hnmn@t@H{#1 pt}}
+\define@key{hnmn@calc}{W}{\setlength\hnmn@t@W{#1 pt}}
+\define@key{hnmn@calc}{L}{\hnmn@t@L=#1}
+\define@key{hnmn@calc}{ten}{\def\hnmn@t@ten{#1}}
+\define@key{hnmn@calc}{chi}{\def\hnmn@t@chi{#1}}
+\def\hnmn@a@t@{\hnmn@t@ten,\hnmn@t@chi}
+\newcommand{\calchanmen}[1]{%
+    \hnmn@c@tatefalse
+    \hnmn@listdef{\hnmn@a@t@}{\relax}%
+    \setkeys{hnmn@calc}{#1}%
+    Q = \strip@pt\hnmn@t@Q\par
+    H = \strip@pt\hnmn@t@H\par
+    \ifhnmn@tate
+        \setlength\@tempdima{1pt*\ratio{\ifhnmn@c@tate\textwidth\else\textheight\fi}{\strip@pt\hnmn@t@Q\hnmn@Hunit}}%
+    \else
+        \setlength\@tempdima{1pt*\ratio{\ifhnmn@c@tate\textheight\else\textwidth\fi}{\strip@pt\hnmn@t@Q\hnmn@Hunit}}%
+    \fi
+    W = \strip@pt\@tempdima\par
+    \setlength\@tempdima{1pt*\ratio{\dimexpr\ifhnmn@c@tate\textheight\else\textwidth\fi-\strip@pt\hnmn@t@Q\hnmn@Hunit\relax}{\strip@pt\hnmn@t@H\hnmn@Hunit}}%
+    \addtolength\@tempdima{1pt}%
+    L = \strip@pt\@tempdima\par
+    \ifhnmn@c@tate
+        \setlength\@tempdimb{\hnmn@t@W*\ratio{\strip@pt\hnmn@t@Q\hnmn@Hunit}{1pt}}%
+    \else
+        \setlength\@tempdimb{1pt*\hnmn@t@L*\ratio{\strip@pt\hnmn@t@H\hnmn@Hunit}{1pt}}%
+        \@tempdimb=\dimexpr\@tempdimb-\strip@pt\hnmn@t@H\hnmn@Hunit+\strip@pt\hnmn@t@Q\hnmn@Hunit\relax
+    \fi
+    \@tempdima=\dimexpr\paperheight-\@tempdimb\relax
+    \ifx\hnmn@t@ten\hnmn@relax
+        \ifx\hnmn@t@chi\hnmn@relax
+            \@tempdima=\dimexpr(\@tempdima/2)-\hnmn@marginbottom\relax
+        \else
+            \@tempdima=\dimexpr\@tempdima-\hnmn@t@chi-\hnmn@marginbottom\relax
+        \fi
+    \else
+        \@tempdima=\dimexpr\@tempdima-\hnmn@t@ten-\hnmn@marginbottom\relax
+    \fi
+    footskip = \Convert{\@tempdima}\par
+}
+%%%% 開発用マクロ終わり
+\fi
+
+%% 版面再定義マクロ
+%%%% key
+\define@key{hnmn@new}{adjustfontsize}[true]{\relax}
+\define@key{hnmn@new}{tate}[true]{\tate\hnmn@tatetrue}
+\define@key{hnmn@new}{Q}{\setlength\hnmn@Q{#1 pt}}
+\define@key{hnmn@new}{H}{\setlength\hnmn@H{#1 pt}}
+\define@key{hnmn@new}{W}{\setlength\hnmn@W{#1 pt}}
+\define@key{hnmn@new}{L}{\hnmn@L=#1}
+\define@key{hnmn@new}{ko}{\def\hnmn@koguchiyose{#1}}
+\define@key{hnmn@new}{te}{\def\hnmn@tenyose{#1}}
+\define@key{hnmn@new}{ten}{\def\hnmn@ten{#1}}
+\define@key{hnmn@new}{chi}{\def\hnmn@chi{#1}}
+\define@key{hnmn@new}{nodo}{\def\hnmn@nodo{#1}}
+\define@key{hnmn@new}{koguchi}{\def\hnmn@koguchi{#1}}
+\define@key{hnmn@new}{addten}{\def\hnmn@addten{#1}}
+\define@key{hnmn@new}{addchi}{\def\hnmn@addchi{#1}}
+\define@key{hnmn@new}{addnodo}{\def\hnmn@addnodo{#1}}
+\define@key{hnmn@new}{addkoguchi}{\def\hnmn@addkoguchi{#1}}
+\define@key{hnmn@new}{headheight}{\setlength\headheight{#1}}
+\define@key{hnmn@new}{headsep}{\setlength\headsep{#1}}
+\define@key{hnmn@new}{footskip}{\setlength\footskip{#1}}
+\define@key{hnmn@new}{ptj}[true]{\let\hnmn@Qunit=\bbp \setlength\hnmn@Hunit{1bp}}
+\define@key{hnmn@new}{pt}[true]{\setlength\hnmn@Qunit{1pt}\setlength\hnmn@Hunit{1pt}}
+\define@key{hnmn@new}{jisfontzoom}[true]{\setlength\bQ{.2598169226mm}\setlength\bbp{1.03926769bp}}
+\define@key{hnmn@new}{g}{\setcounter{hnmn@gridnumber}{#1}\stepcounter{hnmn@gridnumber}}
+%%%% \hnmn@gmreset（版面再定義用）
+% geometry.styから抜き出してマクロ化したもの。
+\def\hnmn@gmreset{%
+    \@colht=\textheight
+    \@colroom=\textheight
+    \vsize=\textheight
+    \columnwidth=\textwidth
+    \if@twocolumn%
+        \advance\columnwidth-\columnsep
+        \divide\columnwidth\tw@%
+        \@firstcolumntrue%
+    \fi%
+    \hsize=\columnwidth
+    \linewidth=\hsize
+}
+%%%% key value初期化マクロ
+\def\hnmn@tcnk{\hnmn@ten,\hnmn@chi,\hnmn@nodo,\hnmn@koguchi}
+\def\hnmn@addtcnk{\hnmn@addten,\hnmn@addchi,\hnmn@addnodo,\hnmn@addkoguchi,\hnmn@koguchiyose,\hnmn@tenyose}
+\def\hnmn@listdef#1#2{\@for\@tempa:=#1\do{\expandafter\def\@tempa{#2}}}
+\def\hnmn@resetvalue{%
+    \hnmn@tatefalse
+    \setcounter{hnmn@gridnumber}{0}%
+    \hnmn@Q=11.5pt\hnmn@H=19pt\hnmn@W=42pt\hnmn@L=17
+    \hnmn@listdef{\hnmn@tcnk}{\relax}%
+    \hnmn@listdef{\hnmn@addtcnk}{0mm}%
+    \headheight=10mm\headsep=5mm\footskip=5mm\relax
+    \let\hnmn@Qunit=\bQ\hnmn@Hunit=.25mm\relax
+}
+%%%% \newhanmen
+\newcommand{\newhanmen}[1]{%
+    \clearpage
+    \hnmn@resetvalue
+    \setkeys{hnmn@new}{#1}\ifhnmn@tate\else\yoko\fi
+    \hnmn@set@QHWL% QHWL 再設定
+    \hnmn@gmreset% 版面再設定
+    \hnmn@set@hanmen
+}
+
+%% 書字方向変更マクロ
+\newcommand{\switchwritingdirection}{%
+    \clearpage
+    \iftdir
+        \yoko\topskip=.88\zw\else
+        \tate\topskip=.5\zw\fi
+    \let\@tempa=\textheight
+    \let\textheight=\textwidth
+    \let\textwidth=\@tempa
+    \hnmn@gmreset
+}
+\let\hanmenchangedir=\switchwritingdirection
+
+%% グリッド線
+\newcounter{hnmn@column}
+\newlength{\hnmn@columnskip}
+\define@key{hnmn@pagegrid@key}{tate}[true]{\hnmn@tatetrue}
+\define@key{hnmn@pagegrid@key}{Q}{\hnmn@Q=#1 pt}
+\define@key{hnmn@pagegrid@key}{H}{\hnmn@H=#1 pt}
+\define@key{hnmn@pagegrid@key}{L}{\hnmn@L=#1}
+\define@key{hnmn@pagegrid@key}{column}{\setcounter{hnmn@column}{#1}}
+\define@key{hnmn@pagegrid@key}{columnskip}{\setlength{\hnmn@columnskip}{#1 pt}}
+\define@key{hnmn@pagegrid@key}{g}{%
+    \setcounter{hnmn@gridnumber}{#1}%
+    \addtocounter{hnmn@gridnumber}{1}%
+}
+\newcommand{\pagegridon}[1]{\setkeys{hnmn@pagegrid@key}{#1}}
+\newcommand{\pagegridcolor}[2]{\definecolor{hnmn@gridcolor}{#1}{#2}}
+\pagegridcolor{cmyk}{.25, 0, .5, 0}
+\let\hnmn@outputtombow=\@outputtombow
+\newcounter{hnmn@grid@count}
+\setcounter{hnmn@grid@count}{0}
+\newlength{\hnmn@grid@chars}
+\setlength{\hnmn@grid@chars}{0pt}
+\def\@outputtombow{%
+    \hnmn@outputtombow
+    \setlength{\unitlength}{1\zw}%
+    \rlap{%
+        \vbox to\z@{\vss
+            \hbox to\z@{%
+                \if@twoside
+                    \ifodd\c@page
+                        \hspace{\oddsidemargin}\else
+                        \hspace{\evensidemargin}\fi
+                \else
+                    \hspace{\oddsidemargin}%
+                \fi
+                \vspace{-\topskip}%
+                \ifhnmn@tate\vspace{.5\zw}\else\vspace{.88\zw}\fi
+                \vspace{-\topmargin}%
+                \vspace{-\headsep}%
+                \vspace{-\headheight}%
+                \iftombow\vspace{-1in}\fi
+                \color{hnmn@gridcolor}%
+                \begin{picture}(0,1.1)%
+                    \ifhnmn@tate
+                        \setcounter{hnmn@grid@count}{0}%
+                        \loop
+                            \stepcounter{hnmn@grid@count}%
+                            \multiput(\strip@pt\hnmn@grid@chars,0)(0,-1){\value{hnmn@gridnumber}}{\unitlength=1\zw \line(1,0){1}}%
+                            \ifnum\value{hnmn@column}>1
+                                \multiput(\strip@pt\hnmn@grid@chars,-\strip@pt\hnmn@columnskip)(0,-1){\value{hnmn@gridnumber}}{\unitlength=1\zw \line(1,0){1}}%
+                            \fi
+                        \ifnum\value{hnmn@grid@count}<\hnmn@L%
+                            \multiput(\strip@pt\hnmn@grid@chars,0)(0,-1){\value{hnmn@gridnumber}}{\unitlength=1\zw \line(1,0){1}}%
+                            \setlength{\hnmn@grid@chars}{\hnmn@grid@chars + 1pt*\ratio{\hnmn@H}{\hnmn@Q}}%
+                        \repeat
+                            \relax
+                    \else
+                    \setcounter{hnmn@grid@count}{0}%
+                        \loop
+                            \stepcounter{hnmn@grid@count}%
+                            \multiput(0,-\strip@pt\hnmn@grid@chars)(1,0){\value{hnmn@gridnumber}}{\unitlength=1\zw \line(0,-1){1}}%
+                        \ifnum\value{hnmn@grid@count}<\hnmn@L%
+                            \multiput(0,-\strip@pt\hnmn@grid@chars)(1,0){\value{hnmn@gridnumber}}{\unitlength=1\zw \line(0,-1){1}}%
+                            \setlength{\hnmn@grid@chars}{\hnmn@grid@chars + 1pt*\ratio{\hnmn@H}{\hnmn@Q}}
+                        \repeat
+                            \relax
+                    \fi
+                \end{picture}%
+                \ifnum\value{hnmn@gridnumber}>0
+                \begin{picture}(0,0)%
+                    \color{hnmn@gridcolor}%
+                    \setlength{\unitlength}{1\hnmn@Hunit}%
+                    \ifhnmn@tate
+                        \multiput(0,0)(\strip@pt\hnmn@H,0){\hnmn@L}{\setlength{\unitlength}{\textheight}\line(0,-1){1}}%
+                        \multiput(\strip@pt\hnmn@Q,0)(\strip@pt\hnmn@H,0){\hnmn@L}{\setlength{\unitlength}{\textheight}\line(0,-1){1}}%
+                    \else
+                        \multiput(0,0)(0,-\strip@pt\hnmn@H){\hnmn@L}{\setlength{\unitlength}{\textwidth}\line(1,0){1}}%
+                        \multiput(0,-\strip@pt\hnmn@Q)(0,-\strip@pt\hnmn@H){\hnmn@L}{\setlength{\unitlength}{\textwidth}\line(1,0){1}}%
+                    \fi
+                \end{picture}%
+                \fi
+            }%
+        }%
+    }%
+}
+
+%% clearpage macro
+\let\hnmn@o@cleardoublepage=\cleardoublepage
+\newcommand{\clearevenpage}{%
+    \clearpage
+    \ifodd\c@page
+        \hbox{}\thispagestyle{empty}\newpage
+        \if@twocolumn\hbox{}\newpage\fi
+    \fi
+}
+\newcommand{\clearoddpage}{%
+    \clearpage
+    \ifodd\c@page\else
+        \hbox{}\thispagestyle{empty}\newpage
+        \if@twocolumn\hbox{}\newpage\fi
+    \fi
+}
+
+%% 右綴じ用再定義
+\ifhnmn@@tate
+    \renewcommand{\cleardoublepage}{\clearoddpage}%
+    \AtBeginDvi{\special{pdf:docview  <</ViewerPreferences <</Direction /R2L>>  >>}}%
+\fi
+
+%% all done
+\endinput
